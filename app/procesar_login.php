@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // Es cliente (Rol 0)
                 $_SESSION['es_empleado'] = false;
-                header("Location: ../pages/catalogo.php");
+                header("Location: ../pages/funciones.php");
             }
             exit();
 
@@ -53,4 +53,5 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         echo "<br><br><a href='../pages/login.php'>Volver al login</a>";
         echo "</div>";
     }
+
 }
