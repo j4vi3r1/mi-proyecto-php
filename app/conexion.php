@@ -1,4 +1,8 @@
 <?php
+
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 // Obtenemos la URL de Supabase desde las variables de entorno de Render
 $db_url = getenv('DATABASE_URL');
 
@@ -27,3 +31,4 @@ if ($db_url) {
     die("Error: No se encontró la variable DATABASE_URL en Render.");
 }
 ?>
+
