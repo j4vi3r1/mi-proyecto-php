@@ -31,6 +31,3 @@ if ($db_url) {
     die("Error: No se encontró la variable DATABASE_URL en Render.");
 }
 ?>
-
-
-
