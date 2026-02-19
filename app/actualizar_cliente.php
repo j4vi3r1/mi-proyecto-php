@@ -3,7 +3,7 @@ include_once __DIR__ . '/conexion.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $rut_original = $_POST['rut_original']; // El RUT que ya existía
-    $nuevo_rut = $_POST['rut_contribuyente']; // El RUT que viene del input (puede ser igual o distinto)
+    $nuevo_rut = $_POST['rut_contribuyente']; // El RUT que viene del input
     
     try {
         $conn->beginTransaction();
@@ -42,10 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_con_final = $stmtCon->fetchColumn();
         }
 
-        // 3. ACTUALIZAR CONTRIBUYENTE (Incluyendo el RUT)
+        // 3. ACTUALIZAR CONTRIBUYENTE (Incluyendo Honorario Renta)
         $stmtCli = $conn->prepare("
             UPDATE Contribuyentes SET 
-                rut_contribuyente = ?,  -- ESTO PERMITE CAMBIAR EL RUT
+                rut_contribuyente = ?, 
                 razon_social = ?, 
                 id_estado = ?, 
                 id_regimen = ?, 
@@ -55,16 +55,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 inicio_actividades = ?, 
                 tasa_ppm = ?, 
                 honorario_mensual = ?, 
+                honorario_renta = ?,  -- NUEVO CAMPO AGREGADO
                 remuneracion = ?, 
                 facturacion = ?, 
                 observaciones = ?,
                 id_representante = ?,
                 id_contacto = ?
-            WHERE rut_contribuyente = ? -- BUSCAMOS POR EL RUT ORIGINAL
+            WHERE rut_contribuyente = ?
         ");
 
         $stmtCli->execute([
-            $nuevo_rut, // El nuevo RUT
+            $nuevo_rut,
             $_POST['razon_social'],
             $_POST['id_estado'],
             $_POST['id_regimen'],
@@ -74,17 +75,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             !empty($_POST['inicio_actividades']) ? $_POST['inicio_actividades'] : null,
             !empty($_POST['tasa_ppm']) ? (float)$_POST['tasa_ppm'] : 0,
             !empty($_POST['honorario_mensual']) ? (int)$_POST['honorario_mensual'] : 0,
+            !empty($_POST['honorario_renta']) ? (int)$_POST['honorario_renta'] : 0, // Saneamiento para el nuevo honorario
             isset($_POST['remuneracion']) ? 'true' : 'false',
             isset($_POST['facturacion']) ? 'true' : 'false',
             $_POST['observaciones'] ?? '',
             $id_rep_final,
             $id_con_final,
-            $rut_original // El RUT viejo para el WHERE
+            $rut_original
         ]);
 
-        // --- IMPORTANTE: De aquí en adelante usamos $nuevo_rut ---
+        // --- MANEJO DE RELACIONES (Usando $nuevo_rut) ---
 
-        // 4. ACTUALIZAR PROPIEDADES (Borramos las del viejo, insertamos con el nuevo)
+        // 4. ACTUALIZAR PROPIEDADES
+        // Limpiamos registros previos (del viejo y del nuevo por si acaso)
         $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
              $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$rut_original]);
@@ -135,7 +138,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $conn->commit();
-        // Redireccionamos al perfil con el NUEVO RUT
         header("Location: ../pages/perfil_cliente.php?rut=" . urlencode($nuevo_rut) . "&status=updated");
         exit();
         
