@@ -1,0 +1,8 @@
+RewriteEngine On
+# Si alguien entra a la raíz, redirigir a /public/
+RewriteRule ^$ public/index.php [L]
+
+# Si alguien pide algo que no existe, intentar buscarlo en la raíz o carpetas
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ public/$1 [L]
