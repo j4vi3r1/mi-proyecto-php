@@ -1,53 +1,29 @@
 <?php
-/**
- * Archivo de conexión dinámico (Local / Producción)
- */
+// Obtenemos la URL de Supabase desde las variables de entorno de Render
+$db_url = getenv('DATABASE_URL');
 
-// 1. Intentamos obtener la URL de Aiven desde las variables de entorno de Render
-$databaseUrl = getenv('DATABASE_URL');
+if ($db_url) {
+    // Extraemos los componentes de la URL
+    $db_parts = parse_url($db_url);
+    
+    $host = $db_parts['host'];
+    $port = $db_parts['port'];
+    $user = $db_parts['user'];
+    $pass = $db_parts['pass'];
+    $dbname = ltrim($db_parts['path'], '/');
 
-try {
-    if ($databaseUrl) {
-        /**
-         * CONFIGURACIÓN PARA LA NUBE (Render + Aiven)
-         * PDO puede recibir la "Service URI" directamente.
-         * Agregamos sslmode=require porque Aiven lo exige.
-         */
-        $dsn = "pgsql:" . str_replace('postgres://', '', $databaseUrl);
-        
-        // Si la URL no trae el parámetro de SSL, lo concatenamos
-        if (!str_contains($dsn, 'sslmode')) {
-            $dsn .= "?sslmode=require";
-        }
-
-        $user = null; // No se necesitan si van en el DSN
-        $password = null;
-
-    } else {
-        /**
-         * CONFIGURACIÓN PARA TU PC (Local - XAMPP/Laragon)
-         */
-        $host     = "127.0.0.1";
-        $port     = "5432";
-        $dbname   = "postgres";
-        $user     = "postgres";
-        $password = "1234";
-
+    try {
+        // Conexión PDO para PostgreSQL
         $dsn = "pgsql:host=$host;port=$port;dbname=$dbname";
+        $conexion = new PDO($dsn, $user, $pass);
+        
+        // Configuración de errores
+        $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        
+    } catch (PDOException $e) {
+        die("Error de conexión: " . $e->getMessage());
     }
-
-    // 2. Creación de la instancia PDO
-    $conn = new PDO($dsn, $user, $password, [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ]);
-
-    // echo "¡Conectado con éxito, bro!"; 
-
-} catch (PDOException $e) {
-    // En producción es vital no mostrar contraseñas. 
-    // Usamos un mensaje genérico si algo falla.
-    error_log($e->getMessage());
-    die("Error crítico de conexión. Revisa los logs del servidor.");
+} else {
+    die("Error: No se encontró la variable DATABASE_URL en Render.");
 }
+?>
