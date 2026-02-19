@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 // Es cliente (Rol 0)
                 $_SESSION['es_empleado'] = false;
-                header("Location: ../pages/funciones.php");
+                header("Location: ../public/index.php");
             }
             exit();
 
@@ -55,3 +55,4 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
 }
+
