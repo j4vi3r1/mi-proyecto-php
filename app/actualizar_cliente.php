@@ -2,13 +2,13 @@
 include_once __DIR__ . '/conexion.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $rut_original = $_POST['rut_original']; // El RUT que ya existía
-    $nuevo_rut = $_POST['rut_contribuyente']; // El RUT que viene del input
+    $rut_original = $_POST['rut_original']; 
+    $nuevo_rut = $_POST['rut_contribuyente']; 
     
     try {
         $conn->beginTransaction();
 
-        // 1. MANEJAR REPRESENTANTE (Lógica UPSERT)
+        // 1. MANEJAR REPRESENTANTE (Usando el CONSTRAINT unique_rut_rep que agregaste)
         $stmtRep = $conn->prepare("
             INSERT INTO Representantes (rut_representante, nombre, clave_sii)
             VALUES (?, ?, ?)
@@ -42,25 +42,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_con_final = $stmtCon->fetchColumn();
         }
 
-        // 3. ACTUALIZAR CONTRIBUYENTE (Incluyendo Honorario Renta)
+        // 3. ACTUALIZAR CONTRIBUYENTE
         $stmtCli = $conn->prepare("
             UPDATE Contribuyentes SET 
-                rut_contribuyente = ?, 
-                razon_social = ?, 
-                id_estado = ?, 
-                id_regimen = ?, 
-                id_tipo_empresa = ?, 
-                id_iva = ?,
-                software = ?,
-                inicio_actividades = ?, 
-                tasa_ppm = ?, 
-                honorario_mensual = ?, 
-                honorario_renta = ?,  -- NUEVO CAMPO AGREGADO
-                remuneracion = ?, 
-                facturacion = ?, 
-                observaciones = ?,
-                id_representante = ?,
-                id_contacto = ?
+                rut_contribuyente = ?, razon_social = ?, id_estado = ?, 
+                id_regimen = ?, id_tipo_empresa = ?, id_iva = ?,
+                software = ?, inicio_actividades = ?, tasa_ppm = ?, 
+                honorario_mensual = ?, honorario_renta = ?, 
+                remuneracion = ?, facturacion = ?, observaciones = ?,
+                id_representante = ?, id_contacto = ?
             WHERE rut_contribuyente = ?
         ");
 
@@ -75,24 +65,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             !empty($_POST['inicio_actividades']) ? $_POST['inicio_actividades'] : null,
             !empty($_POST['tasa_ppm']) ? (float)$_POST['tasa_ppm'] : 0,
             !empty($_POST['honorario_mensual']) ? (int)$_POST['honorario_mensual'] : 0,
-            !empty($_POST['honorario_renta']) ? (int)$_POST['honorario_renta'] : 0, // Saneamiento para el nuevo honorario
-            isset($_POST['remuneracion']) ? 'true' : 'false',
-            isset($_POST['facturacion']) ? 'true' : 'false',
+            !empty($_POST['honorario_renta']) ? (int)$_POST['honorario_renta'] : 0,
+            (isset($_POST['remuneracion']) && $_POST['remuneracion'] !== 'false') ? 'true' : 'false',
+            (isset($_POST['facturacion']) && $_POST['facturacion'] !== 'false') ? 'true' : 'false',
             $_POST['observaciones'] ?? '',
             $id_rep_final,
             $id_con_final,
             $rut_original
         ]);
 
-        // --- MANEJO DE RELACIONES (Usando $nuevo_rut) ---
+        // --- RELACIONES 1:N (Borrar y Reinsertar es lo más seguro aquí) ---
 
-        // 4. ACTUALIZAR PROPIEDADES
-        // Limpiamos registros previos (del viejo y del nuevo por si acaso)
+        // 4. PROPIEDADES
         $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
-             $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$rut_original]);
+            $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$rut_original]);
         }
-        
         if (!empty($_POST['propiedades'])) {
             $stmtP = $conn->prepare("INSERT INTO PropiedadesContribuyente (rut_contribuyente, id_tipo_domicilio, comuna, rol_propiedad, rut_propietario, monto_arriendo) VALUES (?, ?, ?, ?, ?, ?)");
             foreach ($_POST['propiedades'] as $p) {
@@ -100,49 +88,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        // 5. ACTUALIZAR CLAVES
+        // 5. CLAVES (Ajustado a tu tabla: id_tipo_clave, usuario, contrasena, observaciones)
         $conn->prepare("DELETE FROM ClavesAcceso WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
             $conn->prepare("DELETE FROM ClavesAcceso WHERE rut_contribuyente = ?")->execute([$rut_original]);
         }
-
         if (!empty($_POST['claves'])) {
-            $stmtCl = $conn->prepare("INSERT INTO ClavesAcceso (rut_contribuyente, id_tipo_clave, usuario, contrasena, observacion) VALUES (?, ?, ?, ?, ?)");
+            $stmtCl = $conn->prepare("INSERT INTO ClavesAcceso (rut_contribuyente, id_tipo_clave, usuario, contrasena, observaciones) VALUES (?, ?, ?, ?, ?)");
             foreach ($_POST['claves'] as $cl) {
-                if (!empty($cl['clave'])) {
+                if (!empty($cl['pass'])) {
                     $stmtCl->execute([
                         $nuevo_rut, 
                         $cl['id_tipo'], 
-                        $cl['usuario'] ?? '', 
-                        $cl['clave'],
-                        $cl['observacion'] ?? ''
+                        $cl['user'] ?? '', 
+                        $cl['pass'], // Esto cae en 'contrasena'
+                        $cl['obs'] ?? '' // Esto cae en 'observaciones'
                     ]);
                 }
             }
         }
 
-        // 6. ACTUALIZAR SOCIOS
+        // 6. SOCIOS (Ajustado a tu tabla: porcentaje_participacion, es_representante)
         $conn->prepare("DELETE FROM Socios WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
             $conn->prepare("DELETE FROM Socios WHERE rut_contribuyente = ?")->execute([$rut_original]);
         }
-
         if (!empty($_POST['socios'])) {
             $stmtS = $conn->prepare("INSERT INTO Socios (rut_contribuyente, rut_socio, nombre_socio, porcentaje_participacion, cantidad_acciones, es_representante) VALUES (?, ?, ?, ?, ?, ?)");
             foreach ($_POST['socios'] as $s) {
                 if (!empty($s['rut'])) {
-                    $es_rep_socio = (isset($s['es_rep']) && ($s['es_rep'] === '1' || $s['es_rep'] === 'true')) ? 'true' : 'false';
-                    $stmtS->execute([$nuevo_rut, $s['rut'], $s['nombre'], (float)($s['porcentaje'] ?? 0), (int)($s['acciones'] ?? 0), $es_rep_socio]);
+                    $es_rep = (isset($s['rep']) && ($s['rep'] == '1' || $s['rep'] == 'true')) ? 'true' : 'false';
+                    $stmtS->execute([
+                        $nuevo_rut, 
+                        $s['rut'], 
+                        $s['nombre'], 
+                        (float)($s['pct'] ?? 0), 
+                        (int)($s['acciones'] ?? 0), 
+                        $es_rep
+                    ]);
                 }
             }
         }
 
         $conn->commit();
-        header("Location: ../pages/perfil_cliente.php?rut=" . urlencode($nuevo_rut) . "&status=updated");
-        exit();
-        
+        echo json_encode(["status" => "success", "rut" => $nuevo_rut]); // O el header redirect
+        header("Location: ../pages/perfil_cliente.php?rut=" . urlencode($nuevo_rut) . "&msg=updated");
+
     } catch (Exception $e) {
         if ($conn->inTransaction()) $conn->rollBack();
-        die("Error crítico: " . $e->getMessage());
+        die("Error en DB: " . $e->getMessage());
     }
 }
