@@ -19,7 +19,7 @@ if ($db_url) {
     try {
         // Conexión PDO para PostgreSQL
         $dsn = "pgsql:host=$host;port=$port;dbname=$dbname";
-        **$conn** = new PDO($dsn, $user, $pass);
+        $conn = new PDO($dsn, $user, $pass);
         
         // Configuración de errores
         $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -31,5 +31,6 @@ if ($db_url) {
     die("Error: No se encontró la variable DATABASE_URL en Render.");
 }
 ?>
+
 
 
