@@ -3,9 +3,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-/** * SEGURIDAD ACTUALIZADA
- * Permitimos acceso a Empleados (1) y Administradores (2)
- */
+// SEGURIDAD: Empleados (1) y Administradores (2)
 if (!isset($_SESSION['rol']) || !in_array($_SESSION['rol'], [1, 2])) {
     header("Location: ../public/index.php?error=acceso_denegado");
     exit();
@@ -18,13 +16,13 @@ $rut = $_GET['rut'] ?? null;
 if (!$rut) { die("Error: RUT no especificado."); }
 
 try {
-    // 1. Consulta principal
+    // 1. Consulta principal con todos los JOINs necesarios
     $stmt = $conn->prepare("
         SELECT c.*, 
                e.nombre_estado, 
                i.tipo_iva, 
                r.nombre_regimen, 
-               t.tipo as tipo_empresa,
+               t.tipo as tipo_empresa_nombre,
                rep.nombre as nombre_rep, 
                rep.rut_representante as rut_rep_real, 
                rep.clave_sii as clave_rep,
@@ -55,7 +53,7 @@ try {
     $propiedadesStmt->execute([$rut]);
     $listaPropiedades = $propiedadesStmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // 3. Consultar Claves (Corregido para traer el ID de tipo y las observaciones de la clave)
+    // 3. Consultar Claves
     $clavesStmt = $conn->prepare("
         SELECT ca.*, tc.nombre_plataforma 
         FROM ClavesAcceso ca
@@ -73,6 +71,11 @@ try {
 } catch (Exception $e) {
     die("Error crítico: " . $e->getMessage());
 }
+
+// Función auxiliar para detectar booleanos (soporta 't'/true de Postgres y 1/0 de PHP)
+function esVerdadero($valor) {
+    return ($valor === true || $valor === 't' || $valor == 1 || $valor === 'true');
+}
 ?>
 
 <main class="min-h-screen bg-slate-50 py-8 px-4">
@@ -81,24 +84,24 @@ try {
         <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <div class="flex items-center gap-3 mb-1">
-                    <span class="text-sky-600 font-bold text-sm uppercase tracking-widest"><?= htmlspecialchars($cliente['tipo_empresa'] ?? 'Empresa') ?></span>
-                    <?php if($cliente['remuneracion'] === true || $cliente['remuneracion'] === 't'): ?>
+                    <span class="text-sky-600 font-bold text-sm uppercase tracking-widest"><?= htmlspecialchars($cliente['tipo_empresa_nombre'] ?? 'Empresa') ?></span>
+                    <?php if(esVerdadero($cliente['remuneracion'])): ?>
                         <span class="px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded-lg uppercase">Remuneraciones</span>
                     <?php endif; ?>
-                    <?php if($cliente['facturacion'] === true || $cliente['facturacion'] === 't'): ?>
+                    <?php if(esVerdadero($cliente['facturacion'])): ?>
                         <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-lg uppercase">Facturación</span>
                     <?php endif; ?>
                 </div>
                 <h1 class="text-3xl font-black text-slate-800"><?= htmlspecialchars($cliente['razon_social']) ?></h1>
                 <p class="text-slate-500 font-medium">
                     RUT: <?= htmlspecialchars($cliente['rut_contribuyente']) ?> • 
-                    <span class="text-emerald-600">● <?= htmlspecialchars($cliente['nombre_estado'] ?? 'Vigente') ?></span>
+                    <span class="text-emerald-600 font-bold">● <?= htmlspecialchars($cliente['nombre_estado'] ?? 'Vigente') ?></span>
                 </p>
             </div>
             <div class="flex gap-2">
                 <a href="editar_cliente.php?rut=<?= urlencode($rut) ?>" class="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-all text-sm">Editar Datos</a>
                 
-                <?php if ($_SESSION['rol'] === 2): ?>
+                <?php if (isset($_SESSION['rol']) && $_SESSION['rol'] == 2): ?>
                 <button onclick="confirmarEliminar('<?= $rut ?>')" class="px-4 py-3 bg-rose-50 text-rose-500 rounded-2xl hover:bg-rose-100 border border-rose-100 transition-all">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                 </button>
@@ -113,11 +116,16 @@ try {
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             
             <div class="lg:col-span-2 space-y-6">
+                
                 <section class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
                     <h2 class="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
                         <div class="w-2 h-6 bg-sky-500 rounded-full"></div> Datos Tributarios
                     </h2>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase">Tipo de Empresa</p>
+                            <p class="text-slate-700 font-semibold"><?= htmlspecialchars($cliente['tipo_empresa_nombre'] ?? 'No definido') ?></p>
+                        </div>
                         <div>
                             <p class="text-xs font-bold text-slate-400 uppercase">Régimen</p>
                             <p class="text-slate-700 font-semibold"><?= htmlspecialchars($cliente['nombre_regimen'] ?? 'No definido') ?></p>
@@ -130,7 +138,7 @@ try {
                             <p class="text-xs font-bold text-slate-400 uppercase">Inicio Actividades</p>
                             <p class="text-slate-700 font-semibold"><?= $cliente['inicio_actividades'] ? date('d/m/Y', strtotime($cliente['inicio_actividades'])) : 'No registrado' ?></p>
                         </div>
-                        <div>
+                        <div class="md:col-span-2">
                             <p class="text-xs font-bold text-slate-400 uppercase">Software Contable</p>
                             <p class="text-slate-700 font-semibold"><?= htmlspecialchars($cliente['software'] ?: 'No usa / No registrado') ?></p>
                         </div>
@@ -149,6 +157,28 @@ try {
                             <p class="text-[10px] font-black text-slate-400 uppercase">H. Renta Anual</p>
                             <p class="text-xl font-black text-slate-800">$<?= number_format($cliente['honorario_renta'] ?? 0, 0, ',', '.') ?></p>
                         </div>
+                    </div>
+                </section>
+
+                <section class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200">
+                    <h2 class="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
+                        <div class="w-2 h-6 bg-indigo-500 rounded-full"></div> Direcciones y Domicilios
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <?php foreach($listaPropiedades as $prop): ?>
+                        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="px-2 py-1 bg-white text-indigo-600 text-[10px] font-black rounded-lg border border-indigo-100 uppercase"><?= htmlspecialchars($prop['nombre_tipo']) ?></span>
+                                <span class="text-xs font-mono font-bold text-slate-400">ROL: <?= htmlspecialchars($prop['rol_propiedad'] ?: 'S/R') ?></span>
+                            </div>
+                            <p class="text-slate-700 font-bold"><?= htmlspecialchars($prop['comuna']) ?></p>
+                            <p class="text-xs text-slate-500 mt-1">Propietario: <?= htmlspecialchars($prop['rut_propietario'] ?: 'Mismo contribuyente') ?></p>
+                            <?php if($prop['monto_arriendo'] > 0): ?>
+                                <p class="text-sm font-black text-indigo-600 mt-2">Arriendo: $<?= number_format($prop['monto_arriendo'], 0, ',', '.') ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if(empty($listaPropiedades)) echo "<p class='text-slate-400 text-sm italic col-span-2'>No hay domicilios registrados.</p>"; ?>
                     </div>
                 </section>
 
@@ -176,7 +206,7 @@ try {
                                     <td class="py-4 text-center font-bold text-slate-600"><?= $socio['porcentaje_participacion'] ?>%</td>
                                     <td class="py-4 text-center text-slate-500"><?= number_format($socio['cantidad_acciones'], 0, ',', '.') ?></td>
                                     <td class="py-4 text-right">
-                                        <?php if($socio['es_representante'] === true || $socio['es_representante'] === 't'): ?>
+                                        <?php if(esVerdadero($socio['es_representante'])): ?>
                                             <span class="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase">Representante</span>
                                         <?php else: ?>
                                             <span class="text-slate-300 text-xs">-</span>
@@ -216,7 +246,6 @@ try {
                         <?php foreach($listaClaves as $cl): ?>
                             <div class="p-4 border border-slate-100 rounded-2xl hover:bg-slate-50 transition-colors">
                                 <p class="text-[10px] font-black text-slate-400 uppercase mb-2"><?= htmlspecialchars($cl['nombre_plataforma']) ?></p>
-                                
                                 <div class="space-y-2">
                                     <div class="flex justify-between items-center bg-slate-50 px-2 py-1 rounded-lg">
                                         <span class="text-[10px] text-slate-400 font-bold uppercase">User:</span>
@@ -238,6 +267,7 @@ try {
                                 </div>
                             </div>
                         <?php endforeach; ?>
+                        <?php if(empty($listaClaves)) echo "<p class='text-slate-400 text-xs italic'>No hay claves registradas.</p>"; ?>
                     </div>
                 </section>
 
@@ -266,8 +296,10 @@ try {
 
 <script>
 function copy(text) {
-    navigator.clipboard.writeText(text);
-    // Podrías añadir un Toast aquí si tienes una librería
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Copiado al portapapeles");
+    });
 }
 
 function confirmarEliminar(rut) {
