@@ -81,6 +81,15 @@ function esVerdadero($valor) {
 <main class="min-h-screen bg-slate-50 py-8 px-4">
     <div class="max-w-6xl mx-auto space-y-6">
         
+        <div class="flex items-center justify-start">
+            <a href="clientes.php" class="flex items-center gap-2 text-slate-400 hover:text-slate-600 font-bold text-sm transition-colors group">
+                <svg class="w-5 h-5 transition-transform group-hover:-translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                Volver al listado
+            </a>
+        </div>
+
         <div class="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
                 <div class="flex items-center gap-3 mb-1">
@@ -154,7 +163,7 @@ function esVerdadero($valor) {
                             <p class="text-xl font-black text-slate-800">$<?= number_format($cliente['honorario_mensual'] ?? 0, 0, ',', '.') ?></p>
                         </div>
                         <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100 text-center">
-                            <p class="text-[10px] font-black text-slate-400 uppercase">H. Renta Anual</p>
+                            <p class="text-[10px] font-black text-slate-400 uppercase">H. Renta Mensual</p>
                             <p class="text-xl font-black text-slate-800">$<?= number_format($cliente['honorario_renta'] ?? 0, 0, ',', '.') ?></p>
                         </div>
                     </div>
