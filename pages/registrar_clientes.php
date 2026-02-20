@@ -39,6 +39,20 @@ try {
                 </div>
             </div>
 
+            <?php if(isset($_GET['res']) && $_GET['res'] === 'error'): ?>
+                <div class="mx-10 mt-6 animate-in slide-in-from-top duration-500">
+                    <div class="bg-rose-50 border border-rose-200 text-rose-700 px-6 py-4 rounded-3xl flex items-center gap-4 shadow-sm">
+                        <div class="bg-rose-600 text-white p-2 rounded-xl">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-widest">Error de Validación</p>
+                            <p class="text-sm font-medium"><?= htmlspecialchars($_GET['msg']) ?></p>
+                        </div>
+                    </div>
+                </div>
+                <?php endif; ?>
+
             <div class="p-10 space-y-12">
                 
                 <section class="space-y-6">
@@ -405,6 +419,24 @@ function addSocioToList() {
     
     closeModalSocio();
 }
+
+// Formateador de RUT en tiempo real
+document.querySelector('input[name="rut_contribuyente"]').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/\./g, '').replace(/-/g, '');
+    if (value.length > 1) {
+        let cuerpo = value.slice(0, -1);
+        let dv = value.slice(-1).toLowerCase();
+        e.target.value = cuerpo + '-' + dv;
+    }
+});
+
+// Aplicar lo mismo a RUT del representante y socios si lo deseas
+document.querySelector('input[name="rut_representante"]').addEventListener('input', function(e) {
+    let value = e.target.value.replace(/\./g, '').replace(/-/g, '');
+    if (value.length > 1) {
+        e.target.value = value.slice(0, -1) + '-' + value.slice(-1).toLowerCase();
+    }
+});
 </script>
 
 <?php include_once __DIR__ . '/../partials/footer.php'; ?>
