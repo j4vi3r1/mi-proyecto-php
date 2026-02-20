@@ -1,84 +1,61 @@
 <?php
 session_start();
-include_once __DIR__ . '/conexion.php';
+include_once 'conexion.php';
 
-// 1. Seguridad: Solo empleados autorizados
-if (!isset($_SESSION['es_empleado']) || $_SESSION['es_empleado'] !== true) {
-    header("Location: ../public/index.php");
+// 1. SEGURIDAD: Verificar que el usuario tenga permiso
+if (!isset($_SESSION['rol']) || $_SESSION['rol'] < 1) {
+    header("Location: ../pages/usuarios.php?res=error_permisos");
     exit();
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Sanitización y captura de datos de Persona
-    $rut       = $_POST['rut'] ?? ''; 
-    $nombres   = trim($_POST['nombres'] ?? '');
+    // Recibir datos del formulario
+    $rut = $_POST['rut'] ?? '';
+    $nombres = trim($_POST['nombres'] ?? '');
     $apellidos = trim($_POST['apellidos'] ?? '');
-    $correo    = trim($_POST['correo'] ?? '');
-    $contacto  = trim($_POST['contacto'] ?? '');
+    $correo = trim($_POST['correo'] ?? '');
+    $contacto = trim($_POST['contacto'] ?? '');
     
-    // Captura de datos de Dirección
-    $dirID  = $_POST['direccionid'] ?? null;
-    $pais   = trim($_POST['pais'] ?? '');
+    // Datos de dirección
+    $direccionID = $_POST['direccionid'] ?? null;
+    $pais = trim($_POST['pais'] ?? '');
     $ciudad = trim($_POST['ciudad'] ?? '');
-    $calle  = trim($_POST['calle'] ?? '');
-    $numero = $_POST['numero'] ?? null;
-
-    // Validación simple: No permitir campos críticos vacíos
-    if (empty($rut) || empty($nombres) || empty($correo)) {
-        header("Location: ../pages/usuarios.php?error=campos_obligatorios");
-        exit();
-    }
+    $calle = trim($_POST['calle'] ?? '');
+    $numero = trim($_POST['numero'] ?? '');
 
     try {
+        // Iniciar transacción para asegurar integridad de datos
         $conn->beginTransaction();
 
-        // 2. Actualizar Tabla persona (Columnas: nombres, apellidos, correo, contacto)
-        $sqlPer = "UPDATE persona 
-                   SET nombres = :nom, apellidos = :ape, correo = :mail, contacto = :cont 
-                   WHERE rut = :rut";
-        $stmtPer = $conn->prepare($sqlPer);
-        $stmtPer->execute([
-            ':nom'  => $nombres,
-            ':ape'  => $apellidos,
-            ':mail' => $correo,
-            ':cont' => $contacto,
-            ':rut'  => $rut
-        ]);
-
-        // 3. Actualizar Tabla direccion (Solo si existe un ID de dirección)
-        if ($dirID) {
-            $sqlDir = "UPDATE direccion 
-                       SET pais = :pais, ciudad = :ciu, calle = :calle, numero = :num 
-                       WHERE direccionid = :dirid";
+        // 2. ACTUALIZAR O INSERTAR DIRECCIÓN
+        if (!empty($direccionID)) {
+            // Si ya existe una dirección asociada, la actualizamos
+            $sqlDir = "UPDATE Direccion SET pais = ?, ciudad = ?, calle = ?, numero = ? WHERE direccionID = ?";
             $stmtDir = $conn->prepare($sqlDir);
-            $stmtDir->execute([
-                ':pais'  => $pais,
-                ':ciu'   => $ciudad,
-                ':calle' => $calle,
-                // Manejo de número: si está vacío, enviamos NULL para evitar errores de tipo entero
-                ':num'   => (!empty($numero) && is_numeric($numero)) ? (int)$numero : null,
-                ':dirid' => $dirID
-            ]);
+            $stmtDir->execute([$pais, $ciudad, $calle, $numero, $direccionID]);
+        } else {
+            // Si el usuario no tenía dirección, la creamos y obtenemos el nuevo ID
+            $sqlDir = "INSERT INTO Direccion (pais, ciudad, calle, numero) VALUES (?, ?, ?, ?)";
+            $stmtDir = $conn->prepare($sqlDir);
+            $stmtDir->execute([$pais, $ciudad, $calle, $numero]);
+            $direccionID = $conn->lastInsertId();
         }
 
+        // 3. ACTUALIZAR DATOS DE LA PERSONA
+        $sqlPer = "UPDATE Persona SET nombres = ?, apellidos = ?, correo = ?, contacto = ?, direccionID = ? WHERE rut = ?";
+        $stmtPer = $conn->prepare($sqlPer);
+        $stmtPer->execute([$nombres, $apellidos, $correo, $contacto, $direccionID, $rut]);
+
+        // Si todo salió bien, confirmamos los cambios
         $conn->commit();
-
-        // Éxito: Redirigir con parámetro de resultado
         header("Location: ../pages/usuarios.php?res=success");
-        exit();
-
+        
     } catch (Exception $e) {
-        // Si algo falla, revertimos todos los cambios para mantener la integridad
-        if ($conn->inTransaction()) {
-            $conn->rollBack();
-        }
-        // En producción, es mejor loguear el error y mostrar un mensaje genérico
-        error_log("Error en actualización de usuario: " . $e->getMessage());
-        header("Location: ../pages/usuarios.php?res=error");
-        exit();
+        // Si algo falla, deshacemos cualquier cambio en la BD
+        $conn->rollBack();
+        header("Location: ../pages/usuarios.php?res=error&msg=" . urlencode($e->getMessage()));
     }
 } else {
-    // Si intentan entrar por GET, fuera
     header("Location: ../pages/usuarios.php");
-    exit();
 }
+exit();
