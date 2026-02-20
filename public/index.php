@@ -17,7 +17,7 @@ include_once __DIR__ . '/../partials/header.php';
             </p>
             
             <div class="flex flex-wrap gap-4 pt-4">
-                <a href="/MiProyecto/pages/catalogo.php" class="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
+                <a href="/MiProyecto/pages/en_desarrollo.php" class="px-8 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl shadow-slate-200">
                     Explorar Equipos
                 </a>
                 <a href="#como-funciona" class="px-8 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold hover:bg-slate-200 transition-all">
@@ -68,4 +68,5 @@ include_once __DIR__ . '/../partials/header.php';
 
 <?php 
 include_once __DIR__ . '/../partials/footer.php'; 
+
 ?>
