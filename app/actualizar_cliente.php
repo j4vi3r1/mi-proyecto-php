@@ -1,4 +1,5 @@
 <?php
+// Asegúrate de que no haya espacios en blanco antes de <?php
 include_once __DIR__ . '/conexion.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -6,9 +7,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nuevo_rut = $_POST['rut_contribuyente']; 
     
     try {
-        $conn->beginTransaction();
+        if (!$conn->inTransaction()) {
+            $conn->beginTransaction();
+        }
 
-        // 1. MANEJAR REPRESENTANTE (Usando el CONSTRAINT unique_rut_rep que agregaste)
+        // 1. MANEJAR REPRESENTANTE (UPSERT con ON CONFLICT)
         $stmtRep = $conn->prepare("
             INSERT INTO Representantes (rut_representante, nombre, clave_sii)
             VALUES (?, ?, ?)
@@ -25,7 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         ]);
         $id_rep_final = $stmtRep->fetchColumn();
 
-        // 2. MANEJAR CONTACTO
+        // 2. MANEJAR CONTACTO (Update o Insert)
         $id_con_actual = $_POST['id_contacto_actual'] ?? null;
         if ($id_con_actual) {
             $stmtCon = $conn->prepare("UPDATE Contacto SET nombre_contacto = ?, telefono = ?, correo = ? WHERE id_contacto = ?");
@@ -42,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id_con_final = $stmtCon->fetchColumn();
         }
 
-        // 3. ACTUALIZAR CONTRIBUYENTE
+        // 3. ACTUALIZAR TABLA CONTRIBUYENTES
         $stmtCli = $conn->prepare("
             UPDATE Contribuyentes SET 
                 rut_contribuyente = ?, razon_social = ?, id_estado = ?, 
@@ -74,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $rut_original
         ]);
 
-        // --- RELACIONES 1:N (Borrar y Reinsertar es lo más seguro aquí) ---
+        // --- MANEJO DE TABLAS RELACIONADAS (Limpiar y Reinsertar) ---
 
         // 4. PROPIEDADES
         $conn->prepare("DELETE FROM PropiedadesContribuyente WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
@@ -84,11 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!empty($_POST['propiedades'])) {
             $stmtP = $conn->prepare("INSERT INTO PropiedadesContribuyente (rut_contribuyente, id_tipo_domicilio, comuna, rol_propiedad, rut_propietario, monto_arriendo) VALUES (?, ?, ?, ?, ?, ?)");
             foreach ($_POST['propiedades'] as $p) {
-                $stmtP->execute([$nuevo_rut, $p['id_tipo'], $p['comuna'], $p['rol'] ?? null, $p['rut_prop'] ?? null, (int)($p['monto'] ?? 0)]);
+                if (!empty($p['id_tipo'])) {
+                    $stmtP->execute([$nuevo_rut, $p['id_tipo'], $p['comuna'], $p['rol'] ?? null, $p['rut_prop'] ?? null, (int)($p['monto'] ?? 0)]);
+                }
             }
         }
 
-        // 5. CLAVES (Ajustado a tu tabla: id_tipo_clave, usuario, contrasena, observaciones)
+        // 5. CLAVES DE ACCESO
         $conn->prepare("DELETE FROM ClavesAcceso WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
             $conn->prepare("DELETE FROM ClavesAcceso WHERE rut_contribuyente = ?")->execute([$rut_original]);
@@ -101,14 +106,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $nuevo_rut, 
                         $cl['id_tipo'], 
                         $cl['user'] ?? '', 
-                        $cl['pass'], // Esto cae en 'contrasena'
-                        $cl['obs'] ?? '' // Esto cae en 'observaciones'
+                        $cl['pass'], 
+                        $cl['obs'] ?? ''
                     ]);
                 }
             }
         }
 
-        // 6. SOCIOS (Ajustado a tu tabla: porcentaje_participacion, es_representante)
+        // 6. SOCIOS
         $conn->prepare("DELETE FROM Socios WHERE rut_contribuyente = ?")->execute([$nuevo_rut]);
         if ($nuevo_rut !== $rut_original) {
             $conn->prepare("DELETE FROM Socios WHERE rut_contribuyente = ?")->execute([$rut_original]);
@@ -131,11 +136,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $conn->commit();
-        echo json_encode(["status" => "success", "rut" => $nuevo_rut]); // O el header redirect
+
+        // REDIRECCIÓN FINAL (Sin echos previos para evitar errores de headers)
         header("Location: ../pages/perfil_cliente.php?rut=" . urlencode($nuevo_rut) . "&msg=updated");
+        exit();
 
     } catch (Exception $e) {
-        if ($conn->inTransaction()) $conn->rollBack();
-        die("Error en DB: " . $e->getMessage());
+        if ($conn->inTransaction()) {
+            $conn->rollBack();
+        }
+        die("Error Crítico en la Base de Datos: " . $e->getMessage());
     }
+} else {
+    die("Acceso no permitido.");
 }
