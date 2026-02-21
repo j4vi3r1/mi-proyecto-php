@@ -27,7 +27,7 @@ $busqueda = isset($_GET['buscar']) ? $_GET['buscar'] : '';
                 </form>
 
                 <?php if ($esEmpleado): ?>
-                    <a href="equipos.php" class="flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-sky-600 transition-all shadow-lg">
+                    <a href="en_desarrollo.php" class="flex items-center justify-center gap-2 px-6 py-3.5 bg-slate-900 text-white rounded-2xl font-bold hover:bg-sky-600 transition-all shadow-lg">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                         Nuevo Registro
                     </a>
@@ -122,5 +122,6 @@ $busqueda = isset($_GET['buscar']) ? $_GET['buscar'] : '';
         </div>
     </div>
 </main>
+
 
 <?php include_once __DIR__ . '/../partials/footer.php'; ?>
