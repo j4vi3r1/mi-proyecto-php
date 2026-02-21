@@ -35,12 +35,12 @@ if (!isset($_SESSION['es_empleado']) || $_SESSION['es_empleado'] !== true) {
                 <p class="text-slate-500 text-sm leading-relaxed">Gestión de empresas, representantes legales y claves.</p>
             </a>
 
-            <a href="en_desarrollo2.php" class="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-2 transition-all duration-300">
+            <a href="representantes.php" class="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-2 transition-all duration-300">
                 <div class="w-16 h-16 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-violet-600 group-hover:text-white transition-all shadow-lg shadow-violet-50">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
-                <h3 class="text-2xl font-bold text-slate-800 mb-2">Liquidaciones (NO APLICA)</h3>
-                <p class="text-slate-500 text-sm leading-relaxed">Historial de pagos, emisión de facturas y detalle de costos de reposición / seguros.</p>
+                <h3 class="text-2xl font-bold text-slate-800 mb-2">Representantes</h3>
+                <p class="text-slate-500 text-sm leading-relaxed">Gestión de representantes legales y sus empresas asociadas.</p>
             </a>
 
         </div>
