@@ -265,7 +265,7 @@ function enviarWA(tel, nombre, monto, mesNombre) {
     }
     const telLimpio = tel.replace(/\D/g,'');
     const montoFmt = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(monto);
-    const msj = `Hola ${nombre}, recordamos el pago de honorarios de ${mesNombre} por un monto de ${montoFmt}. Saludos de ArriendoPro.`;
+    const msj = `Hola ${nombre}, recordamos el pago de honorarios de ${mesNombre} por un monto de ${montoFmt}. Saludos de SVS Contadores.`;
     window.location.href = `whatsapp://send?phone=${telLimpio}&text=${encodeURIComponent(msj)}`;
 }
 </script>
