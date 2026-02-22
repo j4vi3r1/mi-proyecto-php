@@ -19,12 +19,12 @@ if (!isset($_SESSION['es_empleado']) || $_SESSION['es_empleado'] !== true) {
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             
-            <a href="en_desarrollo.php" class="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-2 transition-all duration-300">
+            <a href="cobranza.php" class="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-2 transition-all duration-300">
                 <div class="w-16 h-16 bg-sky-100 text-sky-600 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-sky-600 group-hover:text-white transition-all shadow-lg shadow-sky-50">
                     <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
                 </div>
-                <h3 class="text-2xl font-bold text-slate-800 mb-2">Inventario</h3>
-                <p class="text-slate-500 text-sm leading-relaxed">Control total de maquinaria: registro de series, marcas y valor comercial.</p>
+                <h3 class="text-2xl font-bold text-slate-800 mb-2">Cobranza</h3>
+                <p class="text-slate-500 text-sm leading-relaxed">Generación y seguimiento de cobros mensuales.</p>
             </a>
 
             <a href="clientes.php" class="group bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 hover:-translate-y-2 transition-all duration-300">
