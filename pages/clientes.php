@@ -19,6 +19,16 @@ $search = $_GET['search'] ?? '';
     <?php endif; ?>
 
     <div class="max-w-7xl mx-auto space-y-6">
+        <div class="mb-6">
+            <a href="funciones.php" class="inline-flex items-center gap-2 text-slate-400 hover:text-[#7c83e5] transition-all group font-bold text-xs uppercase tracking-widest">
+                <div class="w-8 h-8 rounded-full bg-white border border-slate-100 shadow-sm flex items-center justify-center group-hover:shadow-md group-hover:-translate-x-1 transition-all">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                </div>
+                Volver a Funciones
+            </a>
+        </div>
         
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
@@ -155,5 +165,6 @@ $search = $_GET['search'] ?? '';
         </div>
     </div>
 </main>
+
 
 <?php include_once __DIR__ . '/../partials/footer.php'; ?>
