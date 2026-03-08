@@ -1,30 +1,42 @@
 <?php
-// 1. BUFFER DE SALIDA (Evita el error de "Cannot modify header information")
+/**
+ * SISTEMA DE GESTIÓN DE COBRANZA - SVS CONTADORES
+ * Este archivo gestiona la generación, visualización y cobro de honorarios mensuales.
+ */
+
+// 1. BUFFER DE SALIDA: Retrasa el envío de información al navegador.
+// Esto permite usar la función header("Location: ...") incluso después de procesar lógica.
 ob_start();
 
+// Iniciar la sesión para verificar quién está logueado y qué permisos tiene.
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// 2. CONEXIÓN Y HEADER
-include_once __DIR__ . '/../app/conexion.php'; 
-include_once __DIR__ . '/../partials/header.php'; 
+// 2. CONEXIÓN Y COMPONENTES VISUALES
+include_once __DIR__ . '/../app/conexion.php'; // Conexión a la base de datos (PDO)
+include_once __DIR__ . '/../partials/header.php'; // Cabecera visual (Navbar, estilos)
 
-// 3. SEGURIDAD: Recuperar el rol del usuario
+// 3. SEGURIDAD Y ROLES
+// Recuperamos el rol del usuario (ejemplo: 1 = Usuario normal, 2 = Administrador).
 $rol_usuario = $_SESSION['rol'] ?? 0; 
 
-// 4. CAPTURAR PERIODO SELECCIONADO
+// 4. CAPTURA DE PERIODO (Mes y Año)
+// Si el usuario filtra por el formulario, usamos esos valores. Si no, usamos el mes/año actual.
 $mes_sel = isset($_GET['mes']) ? (int)$_GET['mes'] : (int)date('n');
 $anio_sel = isset($_GET['anio']) ? (int)$_GET['anio'] : (int)date('Y');
 
+// Diccionario para mostrar el nombre del mes en lugar del número.
 $meses = [
     1 => "Enero", 2 => "Febrero", 3 => "Marzo", 4 => "Abril", 5 => "Mayo", 6 => "Junio",
     7 => "Julio", 8 => "Agosto", 9 => "Septiembre", 10 => "Octubre", 11 => "Noviembre", 12 => "Diciembre"
 ];
 
 try {
-    // --- LÓGICA DE PROCESAMIENTO (POST) ---
+    // --- LÓGICA DE PROCESAMIENTO DE ACCIONES (POST) ---
 
-    // A. GENERAR MES COMPLETO / FALTANTES
+    // A. ACCIÓN: GENERAR MES COMPLETO
+    // Inserta automáticamente los cobros para todos los clientes que tengan un "honorario_mensual" > 0.
     if (isset($_POST['accion']) && $_POST['accion'] === 'generar_mes') {
+        // "ON CONFLICT ... DO NOTHING" evita crear cobros duplicados para el mismo RUT/Mes/Año.
         $sql_generar = "INSERT INTO PagosMensuales (rut_contribuyente, mes, anio, monto_a_cobrar)
                         SELECT rut_contribuyente, :mes, :anio, honorario_mensual 
                         FROM Contribuyentes 
@@ -32,13 +44,18 @@ try {
                         ON CONFLICT (rut_contribuyente, mes, anio) DO NOTHING";
         $stmt_gen = $conn->prepare($sql_generar);
         $stmt_gen->execute(['mes' => $mes_sel, 'anio' => $anio_sel]);
+        
+        // Recargar la página para limpiar el envío del formulario y mostrar datos nuevos.
         header("Location: cobranza.php?mes=$mes_sel&anio=$anio_sel");
         exit();
     }
 
-    // B. GENERAR COBRO INDIVIDUAL
+    // B. ACCIÓN: GENERAR COBRO INDIVIDUAL (Modal)
+    // Permite añadir a un cliente específico que quizás no fue incluido en la carga masiva.
     if (isset($_POST['accion']) && $_POST['accion'] === 'generar_individual') {
         $rut = $_POST['rut_contribuyente'];
+        
+        // Buscamos el monto del honorario que tiene asignado este cliente.
         $sql_h = "SELECT honorario_mensual FROM Contribuyentes WHERE rut_contribuyente = ?";
         $stmt_h = $conn->prepare($sql_h);
         $stmt_h->execute([$rut]);
@@ -55,7 +72,8 @@ try {
         exit();
     }
 
-    // C. ELIMINACIÓN MASIVA (SOLO ADMIN)
+    // C. ACCIÓN: LIMPIAR MES (Solo para administradores - Rol 2)
+    // Borra todos los registros del periodo seleccionado para volver a empezar.
     if (isset($_POST['accion']) && $_POST['accion'] === 'limpiar_mes' && $rol_usuario == 2) {
         $stmt_del = $conn->prepare("DELETE FROM PagosMensuales WHERE mes = ? AND anio = ?");
         $stmt_del->execute([$mes_sel, $anio_sel]);
@@ -63,13 +81,20 @@ try {
         exit();
     }
 
-    // --- CONSULTAS PARA LA VISTA ---
+    // --- CONSULTAS PARA ACTUALIZAR LA VISTA ---
+
+    // 1. Contamos cuántos contribuyentes deberían tener cobro (los que cobran > 0).
     $total_deberian = $conn->query("SELECT COUNT(*) FROM Contribuyentes WHERE honorario_mensual > 0")->fetchColumn();
+    
+    // 2. Contamos cuántos registros ya existen en la tabla de pagos para este mes.
     $stmt_ya = $conn->prepare("SELECT COUNT(*) FROM PagosMensuales WHERE mes = :mes AND anio = :anio");
     $stmt_ya->execute(['mes' => $mes_sel, 'anio' => $anio_sel]);
     $ya_tienen = $stmt_ya->fetchColumn();
+    
+    // 3. Bandera para mostrar el banner de "Generar Faltantes" si no están todos los registros creados.
     $faltan_cobros = ($ya_tienen < $total_deberian);
 
+    // 4. Obtener el listado principal de cobros con los nombres de los clientes.
     $query = "SELECT p.id_pago, c.razon_social, cont.nombre_contacto, cont.telefono, p.monto_a_cobrar, p.estado
               FROM PagosMensuales p
               JOIN Contribuyentes c ON p.rut_contribuyente = c.rut_contribuyente
@@ -80,15 +105,19 @@ try {
     $stmt->execute(['mes' => $mes_sel, 'anio' => $anio_sel]);
     $cobros = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+    // 5. Cálculo de totales (Pendiente vs Pagado) para las tarjetas de arriba.
     $total_pendiente = 0; $total_pagado = 0;
     foreach ($cobros as $c) {
         if ($c['estado'] === 'Pendiente') $total_pendiente += $c['monto_a_cobrar'];
         else $total_pagado += $c['monto_a_cobrar'];
     }
 
+    // 6. Lista de todos los contribuyentes para el buscador/modal de añadir individual.
     $todos_contri = $conn->query("SELECT rut_contribuyente, razon_social FROM Contribuyentes ORDER BY razon_social ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-} catch (Exception $e) { $error = $e->getMessage(); }
+} catch (Exception $e) { 
+    $error = $e->getMessage(); 
+}
 ?>
 
 <main class="min-h-screen bg-slate-50 py-12 px-6">
@@ -129,14 +158,14 @@ try {
                     </button>
                 </form>
 
-                <button onclick="document.getElementById('modalInd').classList.remove('hidden')" class="p-4 bg-white border border-slate-100 rounded-full text-slate-600 hover:text-[#7c83e5] shadow-sm transition-all" title="Añadir cobro individual">
+                <button onclick="document.getElementById('modalInd').classList.remove('hidden')" class="p-4 bg-white border border-slate-100 rounded-full text-slate-600 hover:text-[#7c83e5] shadow-sm transition-all">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
                 </button>
 
                 <?php if(!empty($cobros) && $rol_usuario == 2): ?>
-                <form method="POST" onsubmit="return confirm('¿Eliminar TODO el mes? Esta acción no se puede deshacer.');">
+                <form method="POST" onsubmit="return confirm('¿Eliminar TODO el mes?');">
                     <input type="hidden" name="accion" value="limpiar_mes">
-                    <button type="submit" class="p-4 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-500 hover:text-white transition-all shadow-sm shadow-rose-100" title="Reiniciar Mes">
+                    <button type="submit" class="p-4 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-500 hover:text-white transition-all shadow-sm shadow-rose-100">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
                 </form>
@@ -159,23 +188,15 @@ try {
             <div class="mb-8 bg-indigo-600 rounded-[2rem] p-6 shadow-xl shadow-indigo-200 flex flex-col md:flex-row items-center justify-between gap-4">
                 <div class="flex items-center gap-4 text-white">
                     <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg></div>
-                    <div>
-                        <p class="font-black uppercase text-xs tracking-widest leading-none mb-1">Generación masiva</p>
-                        <p class="text-indigo-100 text-sm font-medium italic">Hay <?= ($total_deberian - $ya_tienen) ?> registros pendientes de crear.</p>
-                    </div>
+                    <div><p class="font-black uppercase text-xs tracking-widest leading-none mb-1">Generación masiva</p><p class="text-indigo-100 text-sm font-medium italic">Hay <?= ($total_deberian - $ya_tienen) ?> registros pendientes.</p></div>
                 </div>
-                <form method="POST">
-                    <input type="hidden" name="accion" value="generar_mes">
-                    <button type="submit" class="bg-white text-indigo-600 px-8 py-3 rounded-xl font-black text-xs uppercase tracking-tighter hover:bg-slate-100 transition-all shadow-lg active:scale-95">
-                        Generar Faltantes
-                    </button>
-                </form>
+                <form method="POST"><input type="hidden" name="accion" value="generar_mes"><button type="submit" class="bg-white text-indigo-600 px-8 py-3 rounded-xl font-black text-xs uppercase hover:bg-slate-100 transition-all shadow-lg active:scale-95">Generar Faltantes</button></form>
             </div>
         <?php endif; ?>
 
         <?php if(empty($cobros)): ?>
             <div class="bg-white rounded-[3rem] p-32 text-center border border-dashed border-slate-200">
-                <p class="text-slate-400 font-black uppercase text-[10px] tracking-[0.3em]">No hay datos generados para este periodo</p>
+                <p class="text-slate-400 font-black uppercase text-[10px] tracking-[0.3em]">No hay datos para este periodo</p>
             </div>
         <?php else: ?>
             <div class="bg-white rounded-[3rem] border border-slate-100 shadow-xl overflow-hidden">
@@ -201,29 +222,16 @@ try {
                             <td class="px-8 py-6 font-black text-slate-700">$<?= number_format($c['monto_a_cobrar'], 0, ',', '.') ?></td>
                             <td class="px-8 py-6">
                                 <div class="flex justify-center items-center gap-2">
-                                    <button onclick="enviarWA('<?= $c['telefono'] ?>', '<?= $c['nombre_contacto'] ?>', '<?= $c['monto_a_cobrar'] ?>', '<?= $meses[$mes_sel] ?>')" class="p-3 bg-[#5be2f8]/10 text-[#2db5cc] rounded-xl hover:bg-[#5be2f8] hover:text-white transition-all active:scale-90" title="WhatsApp">
-                                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
-                                    </button>
+                                    <button onclick="enviarWA('<?= $c['telefono'] ?>', '<?= $c['nombre_contacto'] ?>', '<?= $c['monto_a_cobrar'] ?>', '<?= $meses[$mes_sel] ?>')" class="p-3 bg-[#5be2f8]/10 text-[#2db5cc] rounded-xl hover:bg-[#5be2f8] hover:text-white transition-all active:scale-90"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg></button>
                                     
                                     <?php if($c['estado'] === 'Pendiente'): ?>
-                                    <form method="POST" action="marcar_pagado.php">
-                                        <input type="hidden" name="id_pago" value="<?= $c['id_pago'] ?>">
-                                        <input type="hidden" name="mes" value="<?= $mes_sel ?>"><input type="hidden" name="anio" value="<?= $anio_sel ?>">
-                                        <button type="submit" class="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-90">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
-                                        </button>
-                                    </form>
+                                    <form method="POST" action="marcar_pagado.php"><input type="hidden" name="id_pago" value="<?= $c['id_pago'] ?>"><input type="hidden" name="mes" value="<?= $mes_sel ?>"><input type="hidden" name="anio" value="<?= $anio_sel ?>"><button type="submit" class="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-90"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></button></form>
                                     <?php endif; ?>
 
                                     <?php if($rol_usuario == 2): ?>
-                                    <form method="POST" action="marcar_pagado.php" onsubmit="return confirm('¿Eliminar este cobro?');">
-                                        <input type="hidden" name="id_pago" value="<?= $c['id_pago'] ?>">
-                                        <input type="hidden" name="mes" value="<?= $mes_sel ?>"><input type="hidden" name="anio" value="<?= $anio_sel ?>">
-                                        <input type="hidden" name="accion" value="eliminar">
-                                        <button type="submit" class="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all active:scale-90 shadow-sm shadow-rose-100">
-                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                        </button>
-                                    </form>
+                                    <button type="button" onclick="abrirModalEliminar(<?= $c['id_pago'] ?>)" class="p-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all active:scale-90 shadow-sm shadow-rose-100">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
                                     <?php endif; ?>
                                 </div>
                             </td>
@@ -237,41 +245,89 @@ try {
 </main>
 
 <div id="modalInd" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
-    <div class="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl relative overflow-hidden text-center">
+    <div class="bg-white rounded-[2.5rem] p-10 max-w-md w-full shadow-2xl text-center relative overflow-hidden">
         <div class="absolute top-0 left-0 w-full h-2 bg-[#5be2f8]"></div>
         <h2 class="text-3xl font-black text-slate-800 mb-2 italic tracking-tighter">Añadir <span class="text-[#5be2f8]">Cobro</span></h2>
-        <p class="text-slate-500 text-xs mb-8 font-bold italic tracking-tight">Periodo: <span class="text-[#7c83e5]"><?= $meses[$mes_sel] ?></span></p>
-        
+        <p class="text-slate-500 text-xs mb-8 font-bold italic">Periodo: <span class="text-[#7c83e5]"><?= $meses[$mes_sel] ?></span></p>
         <form method="POST">
             <input type="hidden" name="accion" value="generar_individual">
-            <select name="rut_contribuyente" class="w-full bg-slate-50 border-none rounded-2xl p-4 mb-8 font-bold text-slate-700 focus:ring-2 focus:ring-[#7c83e5] appearance-none text-center">
+            <select name="rut_contribuyente" class="w-full bg-slate-50 border-none rounded-2xl p-4 mb-8 font-bold text-slate-700 focus:ring-2 focus:ring-[#7c83e5]">
                 <?php foreach($todos_contri as $tc): ?>
                     <option value="<?= $tc['rut_contribuyente'] ?>"><?= $tc['razon_social'] ?></option>
                 <?php endforeach; ?>
             </select>
             <div class="flex gap-4">
-                <button type="button" onclick="document.getElementById('modalInd').classList.add('hidden')" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px] tracking-widest">Cerrar</button>
-                <button type="submit" class="flex-1 bg-[#7c83e5] text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-slate-800 transition-all">Generar</button>
+                <button type="button" onclick="document.getElementById('modalInd').classList.add('hidden')" class="flex-1 py-4 text-slate-400 font-black uppercase text-[10px]">Cerrar</button>
+                <button type="submit" class="flex-1 bg-[#7c83e5] text-white py-4 rounded-2xl font-black shadow-lg hover:bg-slate-800 transition-all">Generar</button>
             </div>
         </form>
     </div>
 </div>
 
+<div id="modalConfirmarEliminar" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center hidden p-4">
+    <div class="w-[320px] flex flex-col p-6 relative items-center justify-center bg-gray-800 border border-gray-700 shadow-2xl rounded-3xl animate-in fade-in zoom-in duration-200">
+        <div class="text-center p-3 flex-auto justify-center">
+            <div class="w-16 h-16 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-rose-500" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                </svg>
+            </div>
+            <h2 class="text-xl font-black py-2 text-gray-100 italic">¿Estás seguro?</h2>
+            <p class="text-sm text-gray-400 px-2 font-medium leading-relaxed">
+                Este cobro se eliminará permanentemente del sistema. No podrás recuperar este registro.
+            </p>
+        </div>
+        
+        <form id="formEliminar" method="POST" action="marcar_pagado.php" class="w-full mt-4 flex gap-3">
+            <input type="hidden" name="id_pago" id="inputEliminarId">
+            <input type="hidden" name="mes" value="<?= $mes_sel ?>">
+            <input type="hidden" name="anio" value="<?= $anio_sel ?>">
+            <input type="hidden" name="accion" value="eliminar">
+            
+            <button type="button" onclick="cerrarModalEliminar()" 
+                class="flex-1 bg-gray-700 py-3 text-xs font-bold tracking-wider border border-gray-600 text-gray-300 rounded-2xl hover:bg-gray-600 transition-all">
+                CANCELAR
+            </button>
+            <button type="submit" 
+                class="flex-1 bg-rose-500 py-3 text-xs font-bold tracking-wider text-white rounded-2xl hover:bg-rose-600 shadow-lg shadow-rose-900/20 transition-all">
+                CONFIRMAR
+            </button>
+        </form>
+    </div>
+</div>
+
 <script>
+// FUNCIONES DE WHATSAPP
 function enviarWA(tel, nombre, monto, mesNombre) {
-    if(!tel || tel.trim() === '') {
-        alert('Sin teléfono registrado.');
-        return;
-    }
+    if(!tel || tel.trim() === '') { alert('Sin teléfono registrado.'); return; }
     const telLimpio = tel.replace(/\D/g,'');
     const montoFmt = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(monto);
     const msj = `Hola ${nombre}, recordamos el pago de honorarios de ${mesNombre} por un monto de ${montoFmt}. Saludos de SVS Contadores.`;
-    window.location.href = `whatsapp://send?phone=${telLimpio}&text=${encodeURIComponent(msj)}`;
+    window.location.href = `https://wa.me/${telLimpio}?text=${encodeURIComponent(msj)}`;
+}
+
+// FUNCIONES MODAL ELIMINAR (UIVERSE)
+function abrirModalEliminar(id) {
+    document.getElementById('inputEliminarId').value = id;
+    document.getElementById('modalConfirmarEliminar').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarModalEliminar() {
+    document.getElementById('modalConfirmarEliminar').classList.add('hidden');
+    document.body.style.overflow = 'auto';
+}
+
+window.onclick = function(event) {
+    const modalE = document.getElementById('modalConfirmarEliminar');
+    const modalI = document.getElementById('modalInd');
+    if (event.target == modalE) cerrarModalEliminar();
+    if (event.target == modalI) modalI.classList.add('hidden');
 }
 </script>
 
 <?php 
-// 5. ENVIAR SALIDA DEL BUFFER
-ob_end_flush();
-include_once __DIR__ . '/../partials/footer.php'; 
+// 5. CIERRE Y LIMPIEZA
+ob_end_flush(); // Envía todo lo acumulado en el buffer al navegador.
+include_once __DIR__ . '/../partials/footer.php'; // Pie de página visual.
 ?>
